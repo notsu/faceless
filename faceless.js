@@ -290,6 +290,34 @@ if ( typeof Object.create !== 'function' ) {
 				return this;
 			},
 
+			/**
+			 * Facebook's API Foundation
+			 * @param  {String}   path     Path of API call
+			 * @param  {String}   method   Header's method
+			 * @param  {Object}   params   Parameters
+			 * @param  {Function} callback Function which called after recieved API result
+			 * @return {Object}            this
+			 */
+			api: function (path, method, params, callback) {
+				if (! this.isAvailable())
+				{
+					this.queue.push ({
+						'method': 'api',
+						'arguments': arguments
+					});
+					return this;
+				}
+
+				FB.api(path, method, params, callback);
+
+				return this;
+			},
+
+			/**
+			 * Logout from Facebook
+			 * @param  {Function} callback callback function called after logout.
+			 * @return {Object}            this
+			 */
 			logout: function (callback) {
 				if (! this.isAvailable())
 				{

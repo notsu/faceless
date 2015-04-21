@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Facebook Sandbox</title>
+</head>
+<body>
+	<script src="https://code.jquery.com/jquery-1.11.2.min.js"></script>
+	<script src="faceless.js"></script>
+	<script>
+	faceless.init().auth(function () {
+		console.log('Authorization Success');
+		console.log(this);
+		faceless.api ('me', function (response) {
+			console.log(response);
+		});
+	}, function () {
+		console.log('Not Authorization.');
+	});
+	</script>
+</body>
+</html>
