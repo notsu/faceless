@@ -7,23 +7,28 @@ if ( typeof Object.create !== 'function' ) {
 	};
 }
 
-(function($ , window , document , undefined ){
+var faceless = (function($ , window , document , undefined ){
 
-	window.faceless = (function(){
+	return (function(){
 
 		var API_VERSION = 'v2.0';
 
+		var appId = {
+			default: '193207127471363',
+			dogilike: '387503985624',
+		};
+
 		var configs = {
 			settings: {
-				appId: '193207127471363',
+				appId: appId.default,
 				cookie: true,
 				oauth: true,
 				status: true,
 				version: API_VERSION
 			},
 			permissions: {
-				require: ['email', 'user_about_me', 'user_birthday', 'publish_actions', 'user_likes'],
-				optional: []
+				require: ['email', 'user_about_me', 'user_birthday', 'publish_actions'],
+				optional: ['user_likes']
 			}
 		};
 
@@ -54,6 +59,18 @@ if ( typeof Object.create !== 'function' ) {
 			queue: [],
 
 			/**
+			 * Default version for central control.
+			 * @type {String}
+			 */
+			defaultVersion: API_VERSION,
+
+			/**
+			 * Pre-defined ID which can called by name space
+			 * @type {[type]}
+			 */
+			appId: appId,
+
+			/**
 			 * Facebook Configuration
 			 * @param  {Object} settings which you want to replaced.
 			 * @return {Object}          return this for chain object.
@@ -69,7 +86,10 @@ if ( typeof Object.create !== 'function' ) {
 			 * @return {Object}             return this for chain object.
 			 */
 			permission: function (permissions) {
-				configs.permissions = permissions;
+				configs.permissions = {
+					require: this.splitPermission(permissions.require),
+					optional: this.splitPermission(permissions.optional)
+				};
 				return this;
 			},
 
@@ -79,9 +99,18 @@ if ( typeof Object.create !== 'function' ) {
 			 */
 			conbinePermission: function () {
 				var permissions = '';
+				// TODO: combine separate
 				permissions += configs.permissions.require.length > 0 ? configs.permissions.require.join(',') : '';
 				permissions += configs.permissions.optional.length > 0 ? configs.permissions.optional.join(',') : '';
 				return permissions;
+			},
+
+			/**
+			 * Split require and optional permission
+			 * @return {Array}
+			 */
+			splitPermission: function (permissionString) {
+				return typeof permissionString == 'string' && permissionString.length > 0 ? permissionString.replace(/ /g, '').split(',') : 0;
 			},
 
 			/**
@@ -94,7 +123,6 @@ if ( typeof Object.create !== 'function' ) {
 
 				window.fbAsyncInit = function() {
 					FB.init(configs.settings);
-					console.log('initialized !!');
 					_this.initialized = true;
 					_this.executeQueue();
 
@@ -120,11 +148,18 @@ if ( typeof Object.create !== 'function' ) {
 			 * @return {null}
 			 */
 			executeQueue: function () {
-				while (this.queue.length)
+				if (this.queue.length > 0)
 				{
-					var queue = this.queue.shift();
-					console.log(queue);
-					this[queue.method].apply(this, queue.arguments);
+					while (this.queue.length)
+					{
+						var queue = this.queue.shift();
+						if (queue.method.indexOf('.') > 0) {
+							var queueSplit = queue.method.split('.');
+							this[queueSplit[0]][queueSplit[1]].apply(this[queueSplit[0]], queue.arguments);
+						} else {
+							this[queue.method].apply(this, queue.arguments);
+						}
+					}
 				}
 			},
 
@@ -133,7 +168,7 @@ if ( typeof Object.create !== 'function' ) {
 			 * @return {Boolean} true if available to execute.
 			 */
 			isAvailable: function () {
-				return this.initialized && this.queue.length <= 0;
+				return this.initialized;
 			},
 
 			/**
@@ -154,20 +189,65 @@ if ( typeof Object.create !== 'function' ) {
 
 				var _this = this;
 
-				FB.getLoginStatus(function (response) {
-					if (response.status === 'connected')
-					{
-						_this.uid = response.authResponse.userID;
-						_this.accessToken = response.authResponse.accessToken;
-						_this.checkPermission(successCallback);
-					}
-					else if (response.status === 'not_authorized')
-					{
-						_this.login(successCallback, cancelCallback);
-					}
-					else
-					{
-						_this.login(successCallback, cancelCallback);
+				this.getLoginStatus(function (response) {
+					_this.uid = response.authResponse.userID;
+					_this.accessToken = response.authResponse.accessToken;
+					_this.checkPermission(function () {
+						successCallback(response);
+					});
+				}, function (response) {
+					_this.login(function () {
+						successCallback(response);
+					}, function () {
+						cancelCallback(response);
+					});
+				}, function (response) {
+					_this.login(function () {
+						successCallback(response);
+					}, function () {
+						cancelCallback(response);
+					});
+				});
+
+				return this;
+			},
+
+			/**
+			 * Check login status of Facebook account.
+			 * @param  {Function} connectedCallback     Called when it's connected.
+			 * @param  {Function} notAuthorizedCallback Called when it's not authorized.
+			 * @param  {Function} failedCallback        Called when it's not login.
+			 * @return {Object}                       this
+			 */
+			getLoginStatus: function (connectedCallback, notAuthorizedCallback, failedCallback) {
+				if (! this.isAvailable())
+				{
+					this.queue.push ({
+						'method': 'getLoginStatus',
+						'arguments': arguments
+					});
+					return this;
+				}
+
+				var _this = this;
+
+				FB.getLoginStatus(function(response) {
+
+					if (response.status === 'connected') {
+						if (typeof connectedCallback == 'function')
+						{
+							connectedCallback(response);
+						}
+					} else if (response.status === 'not_authorized') {
+						if (typeof notAuthorizedCallback == 'function')
+						{
+							notAuthorizedCallback(response);
+						}
+					} else {
+						if (typeof failedCallback == 'function')
+						{
+							failedCallback(response);
+						}
 					}
 				});
 
@@ -195,13 +275,15 @@ if ( typeof Object.create !== 'function' ) {
 				FB.login(function(response) {
 					if (response.authResponse)
 					{
-						_this.checkPermission(successCallback);
+						_this.checkPermission(function () {
+							successCallback(response);
+						});
 					}
 					else
 					{
 						if (typeof successCallback == 'function')
 						{
-							cancelCallback();
+							cancelCallback(response);
 						}
 					}
 				}, {scope: this.conbinePermission()});
@@ -214,7 +296,7 @@ if ( typeof Object.create !== 'function' ) {
 			 * @param  {Function} successCallback callback function if success (only required permission)
 			 * @return {Object}                 return this
 			 */
-			checkPermission: function (successCallback) {
+			checkPermission: function (successCallback, failedCallback) {
 				if (! this.isAvailable())
 				{
 					this.queue.push ({
@@ -236,14 +318,8 @@ if ( typeof Object.create !== 'function' ) {
 						{
 							found = false;
 							needle = configs.permissions.require[keyConfig];
-							for(var key in response.data)
-							{
-								if (needle == response.data[key].permission && response.data[key].status == 'granted')
-								{
-									found = true;
-									break;
-								}
-							}
+							found = _this.hasPermission(needle, response);
+
 							if (! found)
 							{
 								missingPermission.push (needle);
@@ -252,15 +328,35 @@ if ( typeof Object.create !== 'function' ) {
 
 						if (missingPermission.length > 0)
 						{
-							_this.reRequestPermission (missingPermission, successCallback);
+							_this.reRequestPermission (missingPermission, function () {
+								successCallback(response);
+							});
 						}
 						else if (typeof successCallback == 'function')
 						{
-							successCallback();
+							successCallback(response);
 						}
 					}
 				});
 				return this;
+			},
+
+			/**
+			 * Has permission ?
+			 * @param  {String}  needle   Permission's name
+			 * @param  {Object}  response Haystack
+			 * @return {Boolean}          Is it has?
+			 */
+			hasPermission: function (needle, response) {
+				for(var key in response.data)
+				{
+					if (needle == response.data[key].permission && response.data[key].status == 'granted')
+					{
+						return true;
+					}
+				}
+
+				return false;
 			},
 
 			/**
@@ -282,11 +378,35 @@ if ( typeof Object.create !== 'function' ) {
 				missingPermission = missingPermission.join(',');
 				var _this = this;
 				FB.login(function(response) {
-					_this.checkPermission(successCallback);
+					_this.checkPermission(function () {
+						successCallback(response);
+					});
 				},	{
 						scope: missingPermission,
 						auth_type: 'rerequest'
 				});
+				return this;
+			},
+
+			/**
+			 * Is liked that page?
+			 * @param  {String}  pageId          Page's ID
+			 * @param  {Function}  likedCallback   Success callback function
+			 * @param  {Function}  notLikeCallback Failed callback function
+			 * @return {Object}                 this
+			 */
+			isLikedPage: function (pageId, likedCallback, notLikeCallback) {
+				this.api ('me/likes/'+pageId, function (response) {
+					if (response && !response.error && response.data.length > 0)
+					{
+						likedCallback(response);
+					}
+					else
+					{
+						notLikeCallback(response);
+					}
+				});
+
 				return this;
 			},
 
@@ -314,6 +434,27 @@ if ( typeof Object.create !== 'function' ) {
 			},
 
 			/**
+			 * Facebook Dialogs
+			 * @param  {Object}   params   Parameters
+			 * @param  {Function} callback Callback function
+			 * @return {Object}            this
+			 */
+			ui: function (params, callback) {
+				if (! this.isAvailable())
+				{
+					this.queue.push ({
+						'method': 'api',
+						'arguments': arguments
+					});
+					return this;
+				}
+
+				FB.ui(params, callback);
+
+				return this;
+			},
+
+			/**
 			 * Logout from Facebook
 			 * @param  {Function} callback callback function called after logout.
 			 * @return {Object}            this
@@ -328,18 +469,69 @@ if ( typeof Object.create !== 'function' ) {
 					return this;
 				}
 
+				var _this = this;
+
 				if (this.accessToken)
 				{
 					FB.logout(function(response) {
 						if (typeof callback == 'function')
 						{
-							callback();
+							callback(response);
 						}
 					});
 				}
 
 				return this;
 			},
+
+			/**
+			 * Facebook Event
+			 * @type {Object}
+			 */
+			Event: {
+
+				/**
+				 * Event Subscription
+				 * @param  {String}   event    Event's name
+				 * @param  {Function} callback Callback function
+				 * @return {Object}            this
+				 */
+				subscribe: function (event, callback) {
+					if (! faceless.isAvailable())
+					{
+						faceless.queue.push ({
+							'method': 'Event.subscribe',
+							'arguments': arguments
+						});
+						return this;
+					}
+
+					FB.Event.subscribe(event, callback);
+
+					return this;
+				},
+
+				/**
+				 * Event Unsubscription
+				 * @param  {String}   event    Event's name
+				 * @param  {Function} callback Callback function
+				 * @return {Object}            this
+				 */
+				unsubscribe: function (event, callback) {
+					if (! faceless.isAvailable())
+					{
+						faceless.queue.push ({
+							'method': 'Event.unsubscribe',
+							'arguments': arguments
+						});
+						return this;
+					}
+
+					FB.Event.unsubscribe(event, callback);
+
+					return this;
+				}
+			}
 
 		};
 

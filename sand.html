@@ -7,15 +7,33 @@
 	<script src="https://code.jquery.com/jquery-1.11.2.min.js"></script>
 	<script src="faceless.js"></script>
 	<script>
-	faceless.init().auth(function () {
+	faceless.setting({
+		xfbml: true
+	}).permission({require: 'user_location'}).init().auth(function (response) {
 		console.log('Authorization Success');
-		console.log(this);
+		console.log (response);
 		faceless.api ('me', function (response) {
 			console.log(response);
 		});
-	}, function () {
-		console.log('Not Authorization.');
+		faceless.isLikedPage ('51620386454', function (response) {
+			console.log('Liked!');
+			console.log(response);
+		}, function (response) {
+			console.log('Not Liked');
+			console.log(response);
+		});
 	});
+
+	faceless.Event.subscribe('edge.create', function(url) {
+			console.log('Call Event', url);
+        if (url === 'https://facebook.com/rangsituniversity') {
+            ga('send', 'event', 'admchat57_RSU', 'facebook_rsu_fanpage_like_click');
+        }
+        if (url === 'http://www.dek-d.com/admissionchat/') {
+            ga('send', 'event', 'admchat57_RSU', 'facebook_admisssionchat_like_click');
+        }
+    });
 	</script>
+	<div class="fb-page" data-href="https://www.facebook.com/facebook" data-hide-cover="false" data-show-facepile="true" data-show-posts="false"><div class="fb-xfbml-parse-ignore"><blockquote cite="https://www.facebook.com/facebook"><a href="https://www.facebook.com/facebook">Facebook</a></blockquote></div></div>
 </body>
 </html>
